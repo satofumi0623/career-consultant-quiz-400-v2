@@ -5,6 +5,7 @@ import './styles.css'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 const FIELDS = [...new Set(questions.map((q) => q.field))]
+const MIX_LABEL = '総合ミックス100問'
 
 function shuffle(items) {
   const result = [...items]
@@ -16,18 +17,34 @@ function shuffle(items) {
 }
 
 function Setup({ onStart }) {
-  const [fields, setFields] = useState(FIELDS)
+  // 初期状態では、すべて未選択にする
+  const [fields, setFields] = useState([])
+  const [mixMode, setMixMode] = useState(false)
   const [count, setCount] = useState('25')
   const [shuffleOptions, setShuffleOptions] = useState(true)
 
-  const available = questions.filter((q) => fields.includes(q.field)).length
+  const available = mixMode
+    ? Math.min(100, questions.length)
+    : questions.filter((q) => fields.includes(q.field)).length
+
+  const canStart = mixMode || fields.length > 0
 
   const toggleField = (field) => {
+    // 分野を選んだ場合は、総合ミックスを解除する
+    setMixMode(false)
     setFields((current) =>
       current.includes(field)
         ? current.filter((item) => item !== field)
         : [...current, field]
     )
+  }
+
+  const toggleMixMode = () => {
+    setMixMode((current) => {
+      const next = !current
+      if (next) setFields([])
+      return next
+    })
   }
 
   return (
@@ -37,7 +54,7 @@ function Setup({ onStart }) {
         <h1>総合400問</h1>
         <p>
           回答すると、その場で正誤と解説を確認できます。
-          4分野から出題範囲と問題数を選んでください。
+          分野別学習または総合ミックス100問を選んでください。
         </p>
       </section>
 
@@ -45,7 +62,7 @@ function Setup({ onStart }) {
         <h2>出題設定</h2>
 
         <fieldset>
-          <legend>分野</legend>
+          <legend>分野別学習</legend>
           <div className="checks">
             {FIELDS.map((field) => (
               <label key={field}>
@@ -61,14 +78,35 @@ function Setup({ onStart }) {
         </fieldset>
 
         <fieldset>
+          <legend>総合モード</legend>
+          <div className="checks">
+            <label>
+              <input
+                type="checkbox"
+                checked={mixMode}
+                onChange={toggleMixMode}
+              />
+              <span>{MIX_LABEL}</span>
+            </label>
+          </div>
+          <p className="muted">
+            全400問から分野を混ぜてランダムに100問を出題します。
+          </p>
+        </fieldset>
+
+        <fieldset>
           <legend>問題数</legend>
-          <select value={count} onChange={(e) => setCount(e.target.value)}>
-            <option value="10">10問</option>
-            <option value="25">25問</option>
-            <option value="50">50問</option>
-            <option value="100">100問</option>
-            <option value="all">選択分野の全問</option>
-          </select>
+          {mixMode ? (
+            <div className="fixedCount">100問固定</div>
+          ) : (
+            <select value={count} onChange={(e) => setCount(e.target.value)}>
+              <option value="10">10問</option>
+              <option value="25">25問</option>
+              <option value="50">50問</option>
+              <option value="100">100問</option>
+              <option value="all">選択分野の全問</option>
+            </select>
+          )}
         </fieldset>
 
         <label className="switch">
@@ -80,14 +118,18 @@ function Setup({ onStart }) {
           <span>選択肢の順番もランダムにする</span>
         </label>
 
-        <p className="muted">対象：{available}問</p>
+        <p className="muted">
+          {canStart ? `出題予定：${available}問` : '分野または総合ミックス100問を選択してください。'}
+        </p>
 
         <button
           className="primary"
-          disabled={available === 0}
-          onClick={() => onStart({ fields, count, shuffleOptions })}
+          disabled={!canStart}
+          onClick={() =>
+            onStart({ fields, count, shuffleOptions, mixMode })
+          }
         >
-          1問1答を開始
+          {mixMode ? '総合ミックス100問を開始' : '1問1答を開始'}
         </button>
       </section>
     </main>
@@ -131,7 +173,9 @@ function Quiz({ session, setSession, onQuit }) {
     <main className="shell">
       <header className="quizHead">
         <div>
-          <span className="eyebrow">{question.field}</span>
+          <span className="eyebrow">
+            {session.mixMode ? MIX_LABEL : question.field}
+          </span>
           <strong>
             {session.index + 1} / {session.items.length}
           </strong>
@@ -147,6 +191,7 @@ function Quiz({ session, setSession, onQuit }) {
 
       <section className="card question">
         <div className="meta">
+          <span>{question.field}</span>
           <span>{question.theme}</span>
           <span>{question.difficulty}</span>
         </div>
@@ -183,7 +228,9 @@ function Quiz({ session, setSession, onQuit }) {
 
         {showAnswer && (
           <section
-            className={`answerFeedback ${isCorrect ? 'feedbackCorrect' : 'feedbackWrong'}`}
+            className={`answerFeedback ${
+              isCorrect ? 'feedbackCorrect' : 'feedbackWrong'
+            }`}
             aria-live="polite"
           >
             <h2>{isCorrect ? '正解です' : '不正解です'}</h2>
@@ -241,7 +288,9 @@ function Result({ session, onRestart }) {
   return (
     <main className="shell">
       <section className="hero resultHero">
-        <span className="eyebrow">学習結果</span>
+        <span className="eyebrow">
+          {session.mixMode ? MIX_LABEL : '学習結果'}
+        </span>
         <h1>
           {correctCount} / {session.items.length}問
         </h1>
@@ -285,6 +334,10 @@ function Result({ session, onRestart }) {
                 {index + 1}. {q.question}
               </h3>
               <p>
+                <strong>分野：</strong>
+                {q.field}
+              </p>
+              <p>
                 <strong>あなたの回答：</strong>
                 {picked ? `${picked}. ${q.options[picked]}` : '未回答'}
               </p>
@@ -304,12 +357,22 @@ function Result({ session, onRestart }) {
 function App() {
   const [session, setSession] = useState(null)
 
-  const start = ({ fields, count, shuffleOptions }) => {
-    let pool = shuffle(questions.filter((q) => fields.includes(q.field)))
-    const numberOfQuestions =
-      count === 'all' ? pool.length : Math.min(Number(count), pool.length)
+  const start = ({ fields, count, shuffleOptions, mixMode }) => {
+    let pool
 
-    pool = pool.slice(0, numberOfQuestions).map((q) => {
+    if (mixMode) {
+      // 全400問から分野を混ぜてランダムに100問を選ぶ
+      pool = shuffle(questions).slice(0, Math.min(100, questions.length))
+    } else {
+      const candidates = questions.filter((q) => fields.includes(q.field))
+      const numberOfQuestions =
+        count === 'all'
+          ? candidates.length
+          : Math.min(Number(count), candidates.length)
+      pool = shuffle(candidates).slice(0, numberOfQuestions)
+    }
+
+    pool = pool.map((q) => {
       const order = shuffleOptions ? shuffle(LETTERS) : [...LETTERS]
       return {
         ...q,
@@ -325,6 +388,7 @@ function App() {
       index: 0,
       answers: {},
       done: false,
+      mixMode,
     })
   }
 
